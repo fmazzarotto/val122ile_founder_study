@@ -1,0 +1,364 @@
+---
+title: "Val122Ile analysis"
+author: "F Mazzarotto"
+date: "10/7/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE, echo = TRUE)
+```
+
+## Data overview
+* Overall, we have collected genetic data from 15 probands (all carrying the variant) and 31 family members (not all carrying the variant - see table below).
+* Before the analysis, I have changed 2 sample IDs (17CV1458 -> A9 and A574bis -> A574).
+
+ID           | Proband   | Variant carrier | Family |
+-------------|-----------|-----------------|--------|
+**A9**       |   **Yes** |    **Yes**      |  **A** |
+**A127**     |   **Yes** |    **Yes**      |  **B** |
+A150         |   No      |      No         |   B    |
+A151         |   No      |      Yes        |   B    |
+A152         |   No      |      Yes        |   B    |
+A153         |   No      |      Yes        |   B    |
+**A2**       |   **Yes** |    **Yes**      | **C**  |
+A87          |   Yes     |      Yes        |   C    |
+**A204**     |   **Yes** |    **Yes**      | **D**  |
+A207         |   No      |      Yes        |   D    |
+**A228**     |   **Yes** |    **Yes**      | **E**  |
+**A248**     |   **Yes** |    **Yes**      | **F**  |
+**A326**     |   **Yes** |    **Yes**      | **G**  |
+A339         |   No      |      No         |   G    |
+A394         |   No      |      No         |   G    |
+**A352**     |   **Yes** |    **Yes**      | **H**  |
+A376         |   No      |      Yes        |   H    |
+A377         |   No      |      No         |   H    |
+A378         |   No      |      Yes        |   H    |
+A421         |   No      |      Yes        |   H    |
+**A354**     |   **Yes** |    **Yes**      | **I**  |
+A384         |   No      |      Yes        |   I    |
+A398         |   No      |      No         |   I    |
+A399         |   No      |      Yes        |   I    |
+A405         |   No      |      No         |   I    |
+A406         |   No      |      No         |   I    |
+A452         |   No      |      Yes        |   I    |
+**A404**     |   **Yes** |    **Yes**      | **J**  |
+A436         |   No      |      Yes        |   J    |
+A437         |   No      |      No         |   J    |
+A439         |   No      |      No         |   J    |
+**A411**     |   **Yes** |    **Yes**      | **K**  |
+A450         |   No      |      Yes        |   K    |
+A451         |   No      |      Yes        |   K    |
+**A453**     |   **Yes** |    **Yes**      | **L**  |
+A623         |   No      |      Yes        |   L    |
+**A466**     |   **Yes** |    **Yes**      | **M**  |
+**A574**     |   **Yes** |    **Yes**      | **N**  |
+**A635**     |   **Yes** |    **Yes**      | **O**  |
+**A721**     |   **Yes** |    **Yes**      | **P**  |
+A723         |   No      |      Yes        |   P    |
+A725         |   No      |      Yes        |   P    |
+A726         |   No      |      No         |   P    |
+A727         |   No      |      Yes        |   P    |
+A728         |   No      |      No         |   P    |
+A729         |   No      |      No         |   P    |
+
+* Besides these samples, a reference control sample (NA10851 from the Coriell Institute, a CEU sample in the 1000 Genomes Project) was also included in the analysis
+
+* All these samples were genotyped on the EUROFORGEN Global Aim-SNP array, described [here](https://www.sciencedirect.com/science/article/pii/S1872497314000404?via%3Dihub), and sequenced over the entire TTR gene (GRCh38 coordinates: Chromosome 18: 31,557,009-31,598,833; GRCh37 coordinates: Chromosome 18: 29,171,689-29,178,974)
+
+
+## Principal Component Analysis
+* The first analysis is aimed at ascertaining if our samples are originally of European or African ancestry. This analysis is performed only on the 15 probands and on the NA10851 reference control sample, that has to cluster with the Europeans. 
+* I used the 1000 Genomes Project data as reference population to perform the PCA, jointly with our samples.
+* 1000 Genomes Project data were downloaded this way:
+
+```{bash Chunk 1A: variable definition}
+vcf="/media/fmazzaro/Volume/My_stuff/SQLdb_and_genomic_resources/1000GenomesData"
+pfx="http://bochet.gcc.biostat.washington.edu/beagle/1000_Genomes_phase3_v5a/b37.vcf/chr"
+sfx=".1kg.phase3.v5a.vcf.gz"
+
+for chr in {1..22} X; do wget $pfx$chr$sfx $pfx$chr$sfx.tbi -P $vcf/; done
+```
+
+* Then I created a multisample VCF from the single-sample VCFs of our probands, and filtered it to keep only the EUROFORGEN array SNPs:
+```{bash Chunk 1B: Preparation of our samples data for PCA}
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Data
+mkdir -p ../Analysis/PCA
+
+#merge VCFs
+bcftools merge --missing-to-ref A9.variants.filtered.vcf.gz A127.variants.filtered.vcf.gz A2.variants.filtered.vcf.gz A204.variants.filtered.vcf.gz A228.variants.filtered.vcf.gz A248.variants.filtered.vcf.gz A326.variants.filtered.vcf.gz A352.variants.filtered.vcf.gz A354.variants.filtered.vcf.gz A404.variants.filtered.vcf.gz A411.variants.filtered.vcf.gz A453.variants.filtered.vcf.gz A466.variants.filtered.vcf.gz A574.variants.filtered.vcf.gz A635.variants.filtered.vcf.gz A721.variants.filtered.vcf.gz NA10851.variants.filtered.vcf.gz -Oz -o ../Analysis/PCA/probands_multisample_tobesorted.vcf.gz
+
+#sort VCF (as for some reason the output had some variants out of the correct sorting order)
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/PCA
+bcftools sort -Oz probands_multisample_tobesorted.vcf.gz -o probands_multisample.vcf.gz
+rm *tobesorted*
+
+#filter it based on the SNPs on the EUROFORGEN array
+vcftools --gzvcf probands_multisample.vcf.gz --snps ../Method_papers_and_analysis_material/rsID_snp_list_array.tsv --recode --out probands_multisample_array
+mv probands_multisample_array.recode.vcf probands_multisample_array.vcf
+
+#rename the control individual NA10851
+sed -i 's/NA10851/NA10851_internal/g' probands_multisample_array.vcf
+
+#compress the multisample vcf
+bgzip probands_multisample_array.vcf
+```
+
+* I then did the same with 1000Genomes Project data, but filtering for the SNPs of interest first, to save time when merging the VCFs:
+```{bash Chunk 1C: Preparation of 1000 Genomes Project data for PCA}
+# filter for the EUROFORGEN SNPs in every chr file from the 1000 Genomes VCFs
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/PCA
+
+for chr in {1..22};
+do vcftools --gzvcf /media/fmazzaro/Volume/My_stuff/SQLdb_and_genomic_resources/1000GenomesData/ALL.chr$chr.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz --snps ../Method_papers_and_analysis_material/rsID_snp_list_array.tsv --recode --out chr$chr.array; done
+
+# make a single VCF file for the 1000 Genomes samples with only the EUROFORGEN array SNPs
+bcftools concat -o 1000Genomes_samples_array.vcf.gz -Oz chr1.array.recode.vcf chr2.array.recode.vcf chr3.array.recode.vcf chr4.array.recode.vcf chr5.array.recode.vcf chr6.array.recode.vcf chr7.array.recode.vcf chr8.array.recode.vcf chr9.array.recode.vcf chr10.array.recode.vcf chr11.array.recode.vcf chr12.array.recode.vcf chr13.array.recode.vcf chr14.array.recode.vcf chr15.array.recode.vcf chr16.array.recode.vcf chr17.array.recode.vcf chr18.array.recode.vcf chr19.array.recode.vcf chr20.array.recode.vcf chr21.array.recode.vcf chr22.array.recode.vcf
+
+# delete all the single-chromosome files and the log files produced in the SNP filtering step
+rm *.log *.recode.vcf
+
+# modify the multisample file to add the chr prefix and remove the file without the prefix
+awk '{if($0 !~ /^#/) print "chr"$0; else print $0}' <(gzip -dc 1000Genomes_samples_array.vcf.gz) | bgzip > 1000Genomes_samples_array_chr.vcf.gz
+rm 1000Genomes_samples_array.vcf.gz
+```
+
+* Afterwards, I proceeded to keep only the variants actually shared by the two sets (our probands and the 1000 Genomes Project samples):
+```{bash Chunk 1D: Intersection of our samples data with 1000 Genomes Project data for PCA}
+#create a dedicated folder and intersect the two VCFs to keep only variants actually carried by someone in both sets
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/PCA
+
+mkdir Intersection_temp_dir
+tabix -p vcf -f 1000Genomes_samples_array_chr.vcf.gz
+tabix -p vcf -f probands_multisample_array.vcf.gz
+bcftools isec -p Intersection_temp_dir -Oz 1000Genomes_samples_array_chr.vcf.gz probands_multisample_array.vcf.gz
+
+#merge the two files with the variants carried by someone in both sets
+bcftools merge --missing-to-ref ./Intersection_temp_dir/0002.vcf.gz ./Intersection_temp_dir/0003.vcf.gz -Ov -o probands_and_1000GPsamples_array.vcf
+
+#delete unnecessary files
+rm -r Intersection_temp_dir
+```
+
+* As last step, I obtained Plink binary files from the VCF, and performed the PCA:
+```{bash Chunk 1E: PCA analysis}
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/PCA
+
+vcftools --vcf probands_and_1000GPsamples_array.vcf --out probands_and_1000GPsamples_array --plink-tped
+/home/fmazzaro/Software/plink_linux_x86_64_20210606/plink --noweb --tfile probands_and_1000GPsamples_array --make-bed --out probands_and_1000GPsamples_array
+/home/fmazzaro/Software/plink_linux_x86_64_20210606/plink --bfile probands_and_1000GPsamples_array --pca
+```
+
+* Then, I created the PCA plot with the following commands:
+```{r PCA Chunk 1F: plot production}
+setwd("/media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/PCA")
+library(ggplot2)
+eigenvec = read.table("plink.eigenvec",header=F)
+eigenvec = eigenvec[,-c(1)]
+eigenvec = eigenvec[,c(1:6)]
+colnames(eigenvec) = c("IID","PC1","PC2","PC3","PC4","PC5")
+pop = read.table("../Method_papers_and_analysis_material/1000Genomes_and_probands_full_table.ped",header=T,sep="\t")
+pop_reduced = pop[,c(2,7,13)]
+colnames(pop_reduced) = c("IID","POP","S_POP")
+pcastat = merge(eigenvec,pop_reduced,by="IID")
+colnames(pcastat)[which(colnames(pcastat)=="S_POP")] = "Legend"
+pcastat$Legend = factor(pcastat$Legend, levels=c("Probands","NA10851_internal","NA10851_1KG","EUR","AFR","EAS","SAS","AMR"), labels=c("Probands","NA10851_internal","NA10851_1KG","1KG-European","1KG-African","1KG-East Asian","1KG-South Asian","1KG-American"),ordered = T)
+png(file = "Figure_2.png", bg = "transparent", height=16, width=20, units = 'cm', res = 1200)
+ggplot(pcastat, aes(x=PC1, y=PC2, colour=Legend, shape=Legend)) + geom_point() + geom_point(data = subset(pcastat, pcastat$Legend %in% c("NA10851_internal","NA10851_1KG","Probands"))) + scale_colour_manual(name="Legend",labels=c("Probands","NA10851_internal","NA10851_1KG","1KG-European","1KG-African","1KG-East Asian","1KG-South Asian","1KG-American"),values=c("black", "darkgoldenrod1", "deeppink","dodgerblue1","chartreuse3","aquamarine1","brown1","darkorchid2")) + scale_shape_manual(name="Legend",labels=c("Probands","NA10851_internal","NA10851_1KG","1KG-European","1KG-African","1KG-East Asian","1KG-South Asian","1KG-American"),values = c(19,17,12,1,1,1,1,1)) +
+theme(panel.background=element_rect(fill="white")) + theme(axis.line=element_line(colour="black")) + theme(panel.border=element_rect(colour="black", fill=NA)) +
+theme(legend.key=element_blank()) + guides(shape = guide_legend(override.aes = list(size = 4))) + xlab("PC1") + ylab("PC2")  + scale_fill_discrete(na.translate=FALSE)
+dev.off()
+```
+
+<br>
+
+## LD structure analysis (v2)
+
+* _RATIONALE_: Having ascertained that there is no evidence suggesting that our samples may be of African ancestry (as per the PCA results), I proceeded with a LD structure analysis of our samples across the TTR gene. This serves to inform us about the presence of LD blocks in the TTR region. To do this, I used Haploview, available here [here](https://www.broadinstitute.org/haploview/haploview).
+
+* _ANALYSIS_: Before the actual LD analysis, I phased our data using Eagle and exploiting the TSI samples from the 1000 Genomes Project as a reference set for haplotypes.
+  * I then ran chunks 2A and 2B to process our data including probands and TSI samples in parallel, then I performed the LD analysis with Haploview. Due to an apparent bug in the image exporting procedure for .png, I exported the plots in .svg format and converted them to .png separately, using Inkscape (chunks 2C and 2D). 
+  
+* _RESULTS_: The LD plot produced by Haploview highlights the presence of a single LD block across the TTR region in both our samples and in the TSI population: 
+
+<br>
+
+
+```{bash Chunk 2A: Extraction of the TSI samples and preparation for Haploview analysis}
+mkdir -p /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/LD_structure
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/LD_structure
+
+##PREPARATION OF THE TSI SAMPLES (REFERENCE SET) - NEEDED THIS FIRST AS TSI SAMPLES ARE USED AS REFERENCE FOR PHASING OUR SAMPLES
+#extraction of TSI samples (chr18)
+bcftools view --force-samples -Oz --samples NA20502,NA20503,NA20504,NA20505,NA20506,NA20507,NA20508,NA20509,NA20510,NA20511,NA20512,NA20513,NA20514,NA20515,NA20516,NA20517,NA20518,NA20519,NA20520,NA20521,NA20522,NA20524,NA20525,NA20527,NA20528,NA20529,NA20530,NA20531,NA20532,NA20533,NA20534,NA20535,NA20536,NA20537,NA20538,NA20539,NA20540,NA20541,NA20542,NA20543,NA20544,NA20581,NA20582,NA20585,NA20586,NA20587,NA20588,NA20589,NA20752,NA20753,NA20754,NA20755,NA20756,NA20757,NA20758,NA20759,NA20760,NA20761,NA20762,NA20763,NA20764,NA20765,NA20766,NA20767,NA20768,NA20769,NA20770,NA20771,NA20772,NA20773,NA20774,NA20775,NA20778,NA20783,NA20785,NA20786,NA20787,NA20790,NA20792,NA20795,NA20796,NA20797,NA20798,NA20799,NA20800,NA20801,NA20802,NA20803,NA20804,NA20805,NA20806,NA20807,NA20808,NA20809,NA20810,NA20811,NA20812,NA20813,NA20814,NA20815,NA20816,NA20818,NA20819,NA20821,NA20822,NA20826,NA20827,NA20828,NA20829,NA20831,NA20832 /media/fmazzaro/Volume/My_stuff/SQLdb_and_genomic_resources/1000GenomesData/ALL.chr18.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz > chr18_TSI.vcf.gz
+#tabix-index and extract the TTR region
+tabix -p vcf chr18_TSI.vcf.gz
+tabix -h chr18_TSI.vcf.gz 18:29165000-29185000 > TTRregion_TSI.vcf
+#compress and tabix-index
+bgzip TTRregion_TSI.vcf
+tabix -p vcf TTRregion_TSI.vcf.gz
+#annotation with VEP
+/home/fmazzaro/Software/ensembl-vep/vep --input_file TTRregion_TSI.vcf.gz --format vcf --assembly GRCh37 --cache --dir_cache /media/fmazzaro/Volume/vep_cache --species homo_sapiens --force_overwrite --vcf --hgvs --symbol --canonical --af_1kg --verbose --output_file TTRregion_TSI_annotated.vcf
+#filtration based on variant frequencies - keep only variants in at least 1 / 5% of EUR samples
+/home/fmazzaro/Software/ensembl-vep/filter_vep --input_file TTRregion_TSI_annotated.vcf --format vcf --force_overwrite --filter 'EUR_AF >= 0.05 or ID is rs28933980'  --output_file TTRregion_TSI_annotated_min0.05_andVal122Ile.vcf
+#convert to Plink format for haplotype analysis
+$HOME/Software/plink_linux_x86_64_20210606/plink --vcf TTRregion_TSI_annotated_min0.05_andVal122Ile.vcf --recode --out TTRregion_TSI_min0.05_andVal122Ile
+#convert the Plink output to the Haploview format 
+$HOME/Software/plink_linux_x86_64_20210606/plink --file TTRregion_TSI_min0.05_andVal122Ile --recode HV --snps-only just-acgt --out HV_TTRregion_TSI_min0.05_andVal122Ile
+```
+
+```{bash Chunk 2B: Preparation and phasing of our sample set for Haploview analysis - probands including relatives}
+#WITH RELATIVES
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/LD_structure
+#merge single-sample VCFs into a single multi-sample VCF
+bcftools merge --missing-to-ref ../../Data/A*.vcf.gz -Ov -o probands_and_relatives_inclA228.vcf
+
+#remove A228
+vcftools --remove-indv A228 --vcf probands_and_relatives_inclA228.vcf --recode --out probands_and_relatives_temp
+rm *.log
+
+#remove the chr prefix
+awk '{gsub(/^chr/,""); print}' probands_and_relatives_temp.recode.vcf > probands_and_relatives_temp.vcf
+#compress and tabix-index it
+bgzip probands_and_relatives_temp.vcf
+tabix -p vcf probands_and_relatives_temp.vcf.gz
+#sort the VCF file
+bcftools sort -Oz probands_and_relatives_temp.vcf.gz -o probands_and_relatives.vcf.gz
+rm *temp*
+#tabix-index and extract TTR region, compress and re-index
+tabix -p vcf probands_and_relatives.vcf.gz
+tabix -h probands_and_relatives.vcf.gz 18:29165000-29185000 > TTRregion_probands_and_relatives.vcf
+bgzip TTRregion_probands_and_relatives.vcf
+tabix -p vcf TTRregion_probands_and_relatives.vcf.gz
+#phasing of our samples' data based on the TSI reference population
+$HOME/Software/Eagle_v2.4.1/eagle --geneticMapFile $HOME/Software/Eagle_v2.4.1/tables/genetic_map_hg19_withX.txt.gz --outPrefix TTRregion_probands_and_relatives_phased --vcfRef TTRregion_TSI.vcf.gz --vcfTarget TTRregion_probands_and_relatives.vcf.gz --allowRefAltSwap
+#annotation with VEP
+/home/fmazzaro/Software/ensembl-vep/vep --input_file TTRregion_probands_and_relatives_phased.vcf.gz --format vcf --assembly GRCh37 --cache --dir_cache /media/fmazzaro/Volume/vep_cache --species homo_sapiens --force_overwrite --vcf --hgvs --symbol --canonical --af_1kg --verbose --output_file TTRregion_probands_and_relatives_phased_annotated.vcf
+#retrieval of the rs IDs from the 1KG file - as most are already matching but some are missing in our samples' file (takes long)
+mv TTRregion_probands_and_relatives_phased_annotated.vcf TTRregion_probands_and_relatives_phased_annotated_noID.vcf
+bgzip TTRregion_probands_and_relatives_phased_annotated_noID.vcf
+tabix -p vcf TTRregion_probands_and_relatives_phased_annotated_noID.vcf.gz
+bcftools annotate -c ID -a /media/fmazzaro/Volume/My_stuff/SQLdb_and_genomic_resources/1000GenomesData/ALL.chr18.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz -Ov TTRregion_probands_and_relatives_phased_annotated_noID.vcf.gz > TTRregion_probands_and_relatives_phased_annotated.vcf
+
+####NOTE: If you want to perform the analysis with TSI and our samples together, proceed with Chunk 2B/b from here.
+
+#filtration based on variant frequencies - keep only variants in at least 1 / 5% of EUR samples
+/home/fmazzaro/Software/ensembl-vep/filter_vep --input_file TTRregion_probands_and_relatives_phased_annotated.vcf --format vcf --force_overwrite --filter 'EUR_AF >= 0.05 or ID is rs76992529'  --output_file TTRregion_probands_and_relatives_phased_annotated_min0.05_andVal122Ile.vcf
+#convert the phased VCF to the Plink format
+$HOME/Software/plink_linux_x86_64_20210606/plink --vcf TTRregion_probands_and_relatives_phased_annotated_min0.05_andVal122Ile.vcf --recode --out TTRregion_probands_and_relatives_min0.05_andVal122Ile
+
+####NOTE2: I manually added family information to the .ped file created by the command above (information on sex and family membership and structure). Note that Haploview does not support individuals with only one parent specified, so I had to create a fake placeholder for every family in which we had a missing father or mother.
+
+####NOTE3: when you perform the analysis with variants down to 1% MAF, you need to re-input all the family information into the .ped file. To avoid having to do this manually again, I ran the code Chunk 2C/b.
+
+#convert the Plink output to the Haploview format
+$HOME/Software/plink_linux_x86_64_20210606/plink --file TTRregion_probands_and_relatives_min0.05_andVal122Ile --recode HV --snps-only just-acgt --out HV_TTRregion_probands_and_relatives_min0.05_andVal122Ile
+```
+
+```{bash Chunk 2B/b: second part of processing for the analysis of TSI and our samples together with Haploview}
+#compress and index the vcfs, and merge them
+bgzip TTRregion_probands_and_relatives_phased_annotated.vcf
+tabix -p vcf TTRregion_probands_and_relatives_phased_annotated.vcf.gz
+bgzip TTRregion_TSI_annotated_min0.01_andVal122Ile.vcf
+tabix -p vcf TTRregion_TSI_annotated_min0.01_andVal122Ile.vcf.gz
+bcftools merge --missing-to-ref -Ov TTRregion_probands_and_relatives_phased_annotated.vcf.gz TTRregion_TSI_annotated_min0.01_andVal122Ile.vcf.gz -o TSI_and_ours_min0.01_andVal122Ile.vcf
+#manually "phase" the homref genotypes changing 0/0 to 0|0
+sed -i 's/0\/0/0\|0/g' TSI_and_ours_min0.01_andVal122Ile.vcf
+#filter based on variant frequencies in EUR, and keep p.Val122Ile
+/home/fmazzaro/Software/ensembl-vep/filter_vep --input_file TSI_and_ours_min0.01_andVal122Ile.vcf --format vcf --force_overwrite --filter 'EUR_AF >= 0.01 or ID is rs76992529' --output_file TSI_and_ours_min0.01_andVal122Ile_annotated.vcf
+#convert the phased VCF to Plink format
+$HOME/Software/plink_linux_x86_64_20210606/plink --vcf TSI_and_ours_min0.01_andVal122Ile_annotated.vcf --recode --out TSI_and_ours_min0.01_andVal122Ile
+
+####NOTE: here, you need to re-input all family information in the .ped file. Do it with Chunk 2C/c.
+
+#convert the Plink output to the Haploview format
+$HOME/Software/plink_linux_x86_64_20210606/plink --file TSI_and_ours_min0.01_andVal122Ile --recode HV --snps-only just-acgt --out HV_TSI_and_ours_min0.01_andVal122Ile
+```
+
+```{bash Chunk 2C: Conversion of the LD .svg image produced by Haploview to .png for TSI samples}
+####NOTE: This was necessary (as in chunk 2D) because Haploview fails to export in .png format directly, for some Java-related issue. The .svg image exported is larger than a standard "page", hence the large values given to -a indicating the corners of the image.
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/LD_structure
+inkscape -z -a 0:-510:850:100 TTRregion_TSI_min0.05_andVal122Ile.chr-18.svg -e TTRregion_TSI_min0.05_andVal122Ile.chr-18.png
+```
+
+```{r Chunk 2C/b: Commands to enter family information in the .ped file when re-doing the analysis with MAF cutoff 0.01}
+ped05 = read.table("TTRregion_probands_and_relatives_min0.05_andVal122Ile.ped",header=F,sep=" ")
+ped01 = read.table("TTRregion_probands_and_relatives_min0.01_andVal122Ile.ped",header=F,sep=" ")
+ped01 = ped01[,-c(1:5)]
+ped01 = cbind(ped05[1:45,c(1:5)],ped01)
+ped05fake = ped05[46:56,1:6]
+ped05fake2 = matrix(rep(0,74*11),nrow=11,ncol = 74)
+ped05fk = cbind(ped05fake,ped05fake2)
+colnames(ped05fk) = colnames(ped01)
+ped01 = rbind(ped01,ped05fk)
+write.table(ped01,"TTRregion_probands_and_relatives_min0.01_andVal122Ile.ped",col.names=F,row.names=F,sep=" ",quote=F)
+```
+
+```{r Chunk 2C/c: Commands to enter family information in the .ped file when re-doing the analysis with MAF cutoff 0.01 and merged sets}
+ped05 = read.table("TTRregion_probands_and_relatives_min0.05_andVal122Ile.ped",header=F,sep=" ")
+ped01 = read.table("TSI_and_ours_min0.01_andVal122Ile.ped",header=F,sep=" ")
+ped01_ours = ped01[1:45,]
+ped01_tsi = ped01[46:nrow(ped01),]
+ped01_ours = ped01_ours[,-c(1:5)]
+ped01_ours = cbind(ped05[1:45,c(1:5)],ped01_ours)
+ped01 = rbind(ped01_ours,ped01_tsi)
+ped05fake = ped05[46:56,1:6]
+ped05fake2 = matrix(rep(0,96*11),nrow=11,ncol = 96)
+ped05fk = cbind(ped05fake,ped05fake2)
+colnames(ped05fk) = colnames(ped01)
+ped01 = rbind(ped01,ped05fk)
+write.table(ped01,"TSI_and_ours_min0.01_andVal122Ile.ped",col.names=F,row.names=F,sep=" ",quote=F)
+```
+
+```{bash Chunk 2D: Conversion of the LD .svg image produced by Haploview to .png for our samples}
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/LD_structure
+inkscape -z -a 0:-510:850:100 TTRregion_probands_and_relatives_noA228_min0.05EUR_and_Val122Ile.svg -e TTRregion_probands_and_relatives_noA228_min0.05EUR_and_Val122Ile.png
+```
+
+<br>
+
+## Haplotype analysis
+
+###NOTE: _the text below describes the workflow to perform 'coasre' haplotype analysis (only variants with MAF>0.05). To perform a finer analysis, the MAF cutoff needs to be changed in the code chunks below and the analysis with Haploview needs to be modified accordingly._
+
+* After the LD analysis, which showed that the entire TTR gene region is part of a unique LD block in both TSI and in our samples (excluding the possibility of obvious recombination events in the region, occurred to our sub-population of Tuscans), a haplotype analysis was performed. This analysis aims at checking whether the p.Val122Ile mutation occurred on a specific haplotype in the Tuscan population and, if so, on which one. 
+
+* To do this, I first ran Tagger (from Haploview) to extract a selection of tag SNPs from the TTR region. I ran this first on Tuscans to see which/how many haplotypes there are in the broader population. From the original set of SNPs (those in the LD plot, excluding rs1800458), 4 SNPs were selected as tag SNPs as they are characterized by an R^2>0.8 with all other SNPs.
+  * rs3764478 (tagging also rs17740847)
+  * rs72922940 (for some reason with a missing ID in the LD plot for our samples, and labelled with a dot)
+  * rs1791228
+  * rs1791229 (tagging also rs1080093, rs7235277, rs1080094, rs3794884, rs1667244, rs4799583, rs3764479, rs3764476, rs723744, rs1473342)
+Haplotypes are: GACT (43.9%), GGTG (19.6%), GATG (17.3%), TATG (12.6%), GATT (6.5%)
+
+* I then exported the haplotypes image with Haploview, creating the **TSI_haplotypes.svg** file in the ../Haplotype_reconstruction directory. Subsequently, I converted it to .png separately, using Inkscape (chunk 2E).
+
+```{bash Chunk 2E: Conversion of the haplotypes .svg image produced by Haploview to .png for TSI samples}
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/Haplotype_reconstruction
+inkscape -z -a 0:-50:100:105 TSI_haplotypes.svg -e TSI_haplotypes.png
+```
+
+```{bash Chunk 2E/b: Extraction of the tag SNPs from the VCF file for network construction}
+bcftools view -i '%ID=="rs3764478" | %ID=="rs72922940" | %ID=="rs1791228" | %ID=="rs1791229"' TTRregion_TSI_annotated_min0.05_andVal122Ile.vcf -o TTRregion_TSI_tagSNPs.vcf
+```
+
+```{bash Chunk 2E/c: Extraction of the tag SNPs from the VCF file for network construction - merged TSI/our_samples dataset}
+bcftools view -i '%ID=="rs1473342" | %ID=="rs3764477" | %ID=="rs17740847" | %ID=="rs144559530" | %ID=="rs142696368" | %ID=="rs1080094" | %ID=="rs79748512" | %ID=="rs112278416" | %ID=="rs150555470" | %ID=="rs75032823" | %ID=="rs72922938" | %ID=="rs76431866" | %ID=="rs76992529" | %ID=="rs117748556" | %ID=="rs116409170" | %ID=="rs117207032" | %ID=="rs62093482" | %ID=="rs72922947" | %ID=="rs1800458" | %ID=="rs72922940"' TSI_and_ours_min0.01_andVal122Ile_annotated.vcf -o TSI_and_ours_tagSNPs.vcf
+```
+
+* Following the same procedure, and using the same tag SNPs, I derived the haplotypes that are present in our samples. Given the relatedness between our samples, *Haploview kept 29 individuals for the analysis*, some with and some without the variant. 
+* Haplotypes are: TATG (39.7%), GACT (32.8%), GGTG (12.1%), GATG (10.3%), GATT (5.2%). I exported the image with these haplotypes in .svg format from Haploview for the same reasons outlined before, and converted it to a .png image using Inkscape.
+
+```{bash Chunk 2F: Conversion of the haplotypes .svg image produced by Haploview to .png for our samples}
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/Haplotype_reconstruction
+inkscape -z -a 0:-50:100:105 ourSamples_haplotypes.svg -e ourSamples_haplotypes.png
+```
+
+* Including also rs28933980 (p.Val122Ile) in the analysis, it emerged that the variant is present on a single haplotype (TATG), which is the commonest one in our samples, but the second rarest in Tuscans. This is shown by the following image (rs28933980 is labelled as 14 in the figure, and the variant is represented by the A allele).
+
+```{bash Chunk 2G: Conversion of the haplotypes .svg image produced by Haploview to .png for our samples, including p.Val122Ile}
+cd /media/fmazzaro/Volume/My_stuff/Ricerca/Firenze/Papers_DEVEL/Val122Ile_TTR_Cappelli/Analysis/Haplotype_reconstruction
+inkscape -z -a 0:-50:100:105 ourSamples_inclVal122Ile_haplotypes.svg -e ourSamples_inclVal122Ile_haplotypes.png
+```
+
+!**Haplotypes and relative frequencies observed in the 15 probands excluding A228**
+* I have also checked the VCF file manually and computed stats on the haplotypes (N=30) carried by the 15 probands excluding A228. Counts are TATG:16, GACT:7, GATG:3, GGTG:2, GATT:2. The TATG haplotype is shared by all probands, with one of them carrying it on both chromosomes (A204).
