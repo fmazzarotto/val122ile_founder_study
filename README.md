@@ -5,4 +5,4 @@ The file 'Val122Ile_analysis_clean_git.Rmd' is a markdown containing the main co
 
 Please contact the corresponding author for details on the additional analyses performed with Haploview and Network.
 
-Raw data are available in Figshare (to be finalized)
+Raw data are available in Figshare (https://doi.org/10.6084/m9.figshare.21369723.v1).
